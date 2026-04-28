@@ -1,0 +1,36 @@
+name: Change Orchestration CD
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy-infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Terraform Init
+        run: |
+          cd infrastructure/terraform/envs/prod
+          terraform init
+      - name: Terraform Apply
+        run: |
+          cd infrastructure/terraform/envs/prod
+          terraform apply -auto-approve
+
+  deploy-application:
+    needs: deploy-infrastructure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & Push Backend
+        run: |
+          docker build -t devopstrio/change-orchestration-api:${{ github.ref_name }} ./apps/api
+          docker push devopstrio/change-orchestration-api:${{ github.ref_name }}
+      - name: Deploy to EKS
+        run: |
+          aws eks update-kubeconfig --name change-orchestration-prod
+          kubectl set image deployment/api api=devopstrio/change-orchestration-api:${{ github.ref_name }}
